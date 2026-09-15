@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: proxy-checker
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: APP_USER
+        sync: false
+      - key: APP_PASSWORD
+        sync: false

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Перевірка проксі</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Перевірка проксі</h1>
+      <p class="sub">Тип (HTTP / SOCKS5) визначається автоматично. Перевіряється не лише факт з'єднання, а й стабільність протягом серії тестів.</p>
+    </header>
+
+    <section class="card">
+      <form id="form">
+        <div class="row">
+          <label for="host">Адреса проксі (host або IP)</label>
+          <input id="host" name="host" type="text" placeholder="напр. 45.61.187.22" required />
+        </div>
+        <div class="row row-split">
+          <div>
+            <label for="port">Порт</label>
+            <input id="port" name="port" type="number" min="1" max="65535" placeholder="1080" required />
+          </div>
+          <div>
+            <label for="username">Логін <span class="opt">(необов'язково)</span></label>
+            <input id="username" name="username" type="text" autocomplete="off" />
+          </div>
+          <div>
+            <label for="password">Пароль <span class="opt">(необов'язково)</span></label>
+            <input id="password" name="password" type="password" autocomplete="off" />
+          </div>
+        </div>
+        <button id="submit" type="submit">Перевірити проксі</button>
+      </form>
+    </section>
+
+    <section class="card" id="progressCard" hidden>
+      <div class="progress-head">
+        <span id="statusText">Підготовка…</span>
+        <span id="typeBadge" class="badge" hidden></span>
+      </div>
+      <div class="dots" id="dots"></div>
+      <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
+    </section>
+
+    <section class="card result" id="resultCard" hidden>
+      <div class="result-head">
+        <span id="verdictBadge" class="badge badge-lg"></span>
+        <span id="exitInfo" class="exit-info"></span>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="stat-value" id="statSuccess">—</div><div class="stat-label">успішних спроб</div></div>
+        <div class="stat"><div class="stat-value" id="statAvg">—</div><div class="stat-label">середня затримка</div></div>
+        <div class="stat"><div class="stat-value" id="statJitter">—</div><div class="stat-label">джиттер (розкид)</div></div>
+        <div class="stat"><div class="stat-value" id="statFail">—</div><div class="stat-label">макс. серія збоїв</div></div>
+      </div>
+      <div id="chart" class="chart"></div>
+      <p id="message" class="message"></p>
+    </section>
+
+    <section class="card explain">
+      <button id="toggleExplain" class="link-btn" type="button">Як відбувається перевірка? ▾</button>
+      <div id="explainBody" hidden>
+        <h3>1. Визначення типу проксі</h3>
+        <p>Сервіс відкриває пряме TCP-з'єднання на вказаний host:port і "розмовляє" протоколами напряму (protocol probing), без здогадок за портом:</p>
+        <ul>
+          <li>Спочатку надсилається SOCKS5-привітання (байти <code>0x05 0x01 0x00</code>). Якщо у відповідь приходить коректне SOCKS5-підтвердження — це SOCKS5-проксі.</li>
+          <li>Якщо ні — надсилається HTTP-запит <code>CONNECT example.com:443</code>. Якщо відповідь починається з <code>HTTP/1.1 …</code> — це HTTP-проксі.</li>
+          <li>Якщо жоден з протоколів не відповів — порт вважається закритим/недоступним.</li>
+        </ul>
+        <h3>2. Перевірка стабільності</h3>
+        <p>Через визначений тип проксі (з логіном/паролем, якщо вказані) виконується серія з 10 реальних HTTPS-запитів до надійного зовнішнього сервера, з інтервалом ~1 секунда між спробами. Це імітує реальне тривале використання проксі, а не одноразову перевірку "чи відповідає".</p>
+        <p>Для кожної спроби фіксується: чи вдалась вона, час відповіді (latency) та, якщо вдалась — зовнішня IP-адреса й країна виходу (щоб підтвердити, що трафік дійсно тунелюється через проксі).</p>
+        <h3>3. Підсумкова оцінка</h3>
+        <ul>
+          <li><b>Відсоток успішних спроб</b> — скільки з 10 запитів пройшли.</li>
+          <li><b>Середня затримка та джиттер</b> — джиттер це розкид (стандартне відхилення) затримки; навіть якщо всі запити пройшли, високий джиттер означає нестабільне з'єднання.</li>
+          <li><b>Найдовша серія підряд невдалих спроб</b> — показує, чи збої випадкові поодинокі, чи проксі "відвалюється" на тривалий час.</li>
+        </ul>
+        <p>На основі цих метрик виводиться вердикт: <b>Відмінно</b> (100% успіху, низький джиттер), <b>Добре</b> (≥90%, без довгих серій збоїв), <b>Нестабільно</b> (50–90% або є довгі серії збоїв) або <b>Недоступно</b> (менше половини запитів пройшли, або проксі не відповів узагалі).</p>
+      </div>
+    </section>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
