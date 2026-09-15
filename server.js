@@ -297,6 +297,123 @@ app.post('/api/check-stream', async (req, res) => {
   res.end();
 });
 
+// --- Моніторинг тривалості сесії ---
+// Періодично (з обраним інтервалом) ходимо через проксі і дивимось, чи не
+// змінилась вихідна IP. Поки IP та сама — це одна "сесія" проксі; зміна IP
+// означає, що провайдер проксі поротував вихідний вузол (типово для
+// "rotating"-проксі). Так видно, скільки в середньому тримається сесія і чи
+// бувають повні розриви з'єднання.
+const MIN_MONITOR_INTERVAL_S = 5;
+const MAX_MONITOR_INTERVAL_S = 300;
+const MAX_MONITOR_DURATION_MS = 30 * 60 * 1000; // захист від вічного навантаження на безкоштовному хостингу
+const MAX_CONCURRENT_MONITORS_PER_IP = 1;
+const activeMonitors = new Map();
+
+app.post('/api/monitor-stream', async (req, res) => {
+  const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+  if (isRateLimited(clientIp)) {
+    return res.status(429).json({ error: `Забагато перевірок. Ліміт: ${RATE_LIMIT_MAX} за 15 хв.` });
+  }
+  if ((activeMonitors.get(clientIp) || 0) >= MAX_CONCURRENT_MONITORS_PER_IP) {
+    return res.status(429).json({ error: 'У вас уже є активний моніторинг. Зупиніть його перед запуском нового.' });
+  }
+
+  const { host, port, username, password } = req.body || {};
+  const portNum = Number(port);
+  const intervalSec = Math.min(
+    MAX_MONITOR_INTERVAL_S,
+    Math.max(MIN_MONITOR_INTERVAL_S, Number(req.body.intervalSeconds) || 10)
+  );
+
+  res.writeHead(200, {
+    'Content-Type': 'application/x-ndjson; charset=utf-8',
+    'Cache-Control': 'no-cache',
+    'Transfer-Encoding': 'chunked',
+  });
+  const send = (msg) => { try { res.write(JSON.stringify(msg) + '\n'); } catch { /* клієнт вже відключився */ } };
+
+  if (!host || !Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+    send({ event: 'error', message: 'Вкажіть коректну адресу та порт (1–65535).' });
+    return res.end();
+  }
+
+  const resolved = await resolveAndCheck(String(host).trim());
+  if (resolved.blocked) {
+    send({ event: 'error', message: 'Ця адреса заборонена (локальна/службова мережа).' });
+    return res.end();
+  }
+
+  activeMonitors.set(clientIp, (activeMonitors.get(clientIp) || 0) + 1);
+  let stopped = false;
+  req.on('close', () => { stopped = true; });
+
+  const finish = (extra) => {
+    activeMonitors.set(clientIp, Math.max(0, (activeMonitors.get(clientIp) || 1) - 1));
+    if (extra) send(extra);
+    try { res.end(); } catch { /* клієнт вже відключився */ }
+  };
+
+  send({ event: 'status', message: 'Визначаю тип проксі…' });
+  const type = await detectProxyType(resolved.ip, portNum);
+  if (type === 'unknown') {
+    return finish({ event: 'error', message: 'Проксі не відповідає ні як SOCKS5, ні як HTTP-проксі.' });
+  }
+  if (stopped) return finish();
+
+  send({ event: 'type-detected', type });
+  const agent = buildAgent(type, resolved.ip, portNum, username, password);
+
+  let currentIp = null;
+  let sessionStart = null;
+  let changeCount = 0;
+  let successTicks = 0;
+  let totalTicks = 0;
+  let longestSessionMs = 0;
+  const startedAt = Date.now();
+
+  while (!stopped && Date.now() - startedAt < MAX_MONITOR_DURATION_MS) {
+    const r = await runSingleCheck(agent);
+    if (stopped) break;
+    totalTicks++;
+    const now = Date.now();
+    let sessionChanged = false;
+
+    if (r.ok && r.ip) {
+      successTicks++;
+      if (currentIp === null) {
+        currentIp = r.ip;
+        sessionStart = now;
+      } else if (r.ip !== currentIp) {
+        longestSessionMs = Math.max(longestSessionMs, now - sessionStart);
+        changeCount++;
+        sessionChanged = true;
+        currentIp = r.ip;
+        sessionStart = now;
+      }
+    }
+
+    send({
+      event: 'tick',
+      timestamp: now,
+      ok: r.ok,
+      latency: r.latency,
+      ip: r.ip || null,
+      loc: r.loc || null,
+      error: r.error || null,
+      sessionChanged,
+      currentSessionMs: sessionStart !== null ? now - sessionStart : null,
+      changeCount,
+      totalTicks,
+      uptimePct: successTicks / totalTicks,
+    });
+
+    if (stopped) break;
+    await new Promise((r2) => setTimeout(r2, intervalSec * 1000));
+  }
+
+  finish({ event: 'done', reachedLimit: Date.now() - startedAt >= MAX_MONITOR_DURATION_MS });
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Proxy Checker запущено: http://localhost:${PORT}`);

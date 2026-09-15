@@ -259,3 +259,97 @@ button#submit:disabled { background: #a9c0ef; cursor: default; }
   border-radius: 4px;
   font-size: 12.5px;
 }
+
+.section-head { margin-bottom: 16px; }
+.section-title { font-size: 16px; margin: 0 0 4px; }
+.section-sub { font-size: 13px; color: var(--text-soft); margin: 0; line-height: 1.5; }
+
+.row-monitor {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 14px;
+  align-items: end;
+}
+
+@media (max-width: 560px) {
+  .row-monitor { grid-template-columns: 1fr; }
+}
+
+select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  background: #fbfcfe;
+  color: var(--text);
+  outline: none;
+}
+
+select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+#monitorBtn {
+  padding: 10px 16px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+
+#monitorBtn:hover { background: var(--accent-dark); }
+#monitorBtn.active { background: var(--red); }
+#monitorBtn.active:hover { background: #b93a3a; }
+
+.monitor-live { margin-top: 20px; }
+
+.mon-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 560px) {
+  .mon-stats { grid-template-columns: repeat(2, 1fr); }
+}
+
+.mon-log {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 12.5px;
+}
+
+.mon-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-soft);
+}
+
+.mon-row:last-child { border-bottom: none; }
+.mon-row .mon-time { color: var(--text-soft); min-width: 70px; }
+.mon-row .mon-ip { color: var(--text); font-weight: 600; flex: 1; }
+.mon-row .mon-lat { min-width: 60px; text-align: right; }
+.mon-row.fail { background: var(--red-soft); }
+.mon-row.fail .mon-ip { color: var(--red); }
+.mon-row.changed { background: var(--accent-soft); }
+.mon-row.changed .mon-ip { color: var(--accent-dark); }
+.mon-divider {
+  text-align: center;
+  font-size: 11px;
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+  padding: 4px;
+  font-weight: 600;
+}
